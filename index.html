@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>19" Interactive Rack Layout Planner</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Rack textures & styling */
+    .rack-rail {
+      background: repeating-linear-gradient(
+        0deg,
+        #1e293b 0px,
+        #1e293b 26px,
+        #0f172a 27px,
+        #0f172a 28px
+      );
+    }
+
+    .brushed-metal {
+      background: linear-gradient(180deg, #27272a 0%, #18181b 50%, #27272a 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .drag-ghost {
+      opacity: 0.4;
+    }
+  </style>
+</head>
+<body class="h-full font-sans antialiased flex flex-col overflow-hidden bg-slate-950 select-none">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="p-2 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30">
+        <i data-lucide="server" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-100 tracking-wide">RackBuilder Free</h1>
+        <p class="text-xs text-slate-400">19-Inch Equipment Layout & Capacity Planner</p>
+      </div>
+    </div>
+
+    <!-- Actions Toolbar -->
+    <div class="flex items-center gap-2">
+      <button onclick="exportJSON()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i> Export JSON
+      </button>
+      <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 cursor-pointer transition">
+        <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import JSON
+        <input type="file" id="importInput" accept=".json" onchange="importJSON(event)" class="hidden">
+      </label>
+      <button onclick="saveLayoutToStorage()" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition shadow-sm shadow-emerald-900/50">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+      </button>
+      <button onclick="confirmClearRack()" class="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 text-xs font-medium rounded-lg border border-rose-500/30 transition">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- Left Sidebar: Controls & Library -->
+    <aside class="w-80 border-r border-slate-800 bg-slate-900/50 flex flex-col shrink-0 overflow-y-auto">
+      
+      <!-- Configuration Panel -->
+      <div class="p-4 border-b border-slate-800">
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> Rack Configuration
+        </h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Rack Height (U)</label>
+            <select id="rackHeightSelect" onchange="changeRackHeight(parseInt(this.value))" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-2.5 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="6">6U Frame</option>
+              <option value="12" selected>12U Rack</option>
+              <option value="14">14U Cabinet</option>
+              <option value="18">18U Cabinet</option>
+              <option value="24">24U Cabinet</option>
+              <option value="42">42U Full Rack</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Numbering Order</label>
+            <button onclick="toggleNumberingOrder()" id="orderToggleBtn" class="w-full bg-slate-800 border border-slate-700 hover:bg-slate-750 text-slate-200 rounded-lg text-xs px-2.5 py-2 flex items-center justify-between">
+              <span id="orderLabel">Top (High)</span>
+              <i data-lucide="arrow-down-up" class="w-3.5 h-3.5 text-slate-400"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Component Palette -->
+      <div class="p-4 flex-1">
+        <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i> Standard Components
+        </h2>
+        <p class="text-[11px] text-slate-500 mb-3">Drag onto the rack or click to auto-place in the lowest available slot.</p>
+        
+        <div id="paletteList" class="space-y-2">
+          <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Custom Component Button -->
+        <div class="mt-6 pt-4 border-t border-slate-800">
+          <button onclick="openCustomModal()" class="w-full py-2 px-3 border border-dashed border-slate-700 hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-lg text-xs text-indigo-400 font-medium flex items-center justify-center gap-2 transition">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i> Create Custom Equipment
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: Interactive 19" Rack Container -->
+    <main class="flex-1 overflow-y-auto p-6 bg-slate-950 flex flex-col items-center justify-start relative">
+      
+      <!-- Stats / Capacity Header Bar -->
+      <div class="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-xl p-3 mb-6 flex items-center justify-between gap-4 shadow-lg shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+            <i data-lucide="pie-chart" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400 font-medium">Space Utilization</div>
+            <div class="text-sm font-bold text-slate-100"><span id="occupiedUCount">0</span> / <span id="totalUCount">12</span> U <span class="text-xs font-normal text-slate-400">used</span></div>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="flex-1 max-w-xs bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+          <div id="utilizationBar" class="bg-indigo-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+
+        <div class="flex gap-4 border-l border-slate-800 pl-4">
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Est. Power</div>
+            <div id="estPower" class="text-xs font-bold text-slate-200">0 W</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Est. Weight</div>
+            <div id="estWeight" class="text-xs font-bold text-slate-200">0 kg</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rack Frame Enclosure -->
+      <div class="w-full max-w-2xl bg-slate-900 border-2 border-slate-800 rounded-xl p-4 shadow-2xl relative flex flex-col">
+        <!-- Rack Header Frame -->
+        <div class="bg-slate-950 border border-slate-800 rounded-t-lg p-2 flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span>
+            <span class="text-[10px] font-mono uppercase tracking-widest text-slate-500 ml-2">19-INCH SERVER RACK ENCLOSURE</span>
+          </div>
+          <span id="rackBrand" class="text-[10px] font-mono text-slate-600 font-bold">FRAME-19-STD</span>
+        </div>
+
+        <!-- Rack Outer Frame -->
+        <div class="bg-slate-950 border border-slate-800 p-2 rounded-b-lg flex gap-1 relative shadow-inner">
+          <!-- Left Mounting Rail -->
+          <div class="w-8 bg-slate-900 border-r border-slate-800 rounded-l flex flex-col justify-between py-1 px-1 rack-rail shrink-0 select-none">
+            <!-- Cage nut markers generated via JS -->
+            <div id="leftRailNumbers" class="flex flex-col justify-between h-full"></div>
+          </div>
+
+          <!-- Main Equipment Slot Drop Zone -->
+          <div id="rackSlotContainer" class="flex-1 bg-slate-950/80 rounded relative min-h-[300px] border border-slate-800/80 overflow-hidden">
+            <!-- U Slot Lines & Drop Targets generated via JS -->
+          </div>
+
+          <!-- Right Mounting Rail -->
+          <div class="w-8 bg-slate-900 border-l border-slate-800 rounded-r flex flex-col justify-between py-1 px-1 rack-rail shrink-0 select-none">
+            <div id="rightRailNumbers" class="flex flex-col justify-between h-full"></div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Modal for Custom Equipment -->
+  <div id="customModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+          <i data-lucide="plus-square" class="w-4 h-4 text-indigo-400"></i> Custom Equipment Creator
+        </h3>
+        <button onclick="closeCustomModal()" class="text-slate-400 hover:text-slate-200">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form id="customForm" onsubmit="handleCustomSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Device Name</label>
+          <input type="text" id="custName" required placeholder="e.g. NAS Storage Array" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Height (U Units)</label>
+            <select id="custHeight" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="1">1 U</option>
+              <option value="2">2 U</option>
+              <option value="3">3 U</option>
+              <option value="4">4 U</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Category Visual</label>
+            <select id="custCategory" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="server">Server / Node</option>
+              <option value="switch">Switch / Patch</option>
+              <option value="shelf">Shelf / Tray</option>
+              <option value="blank">Blanking Panel</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Power (Watts)</label>
+            <input type="number" id="custPower" value="100" min="0" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Weight (kg)</label>
+            <input type="number" id="custWeight" value="5" min="0" class="w-full bg-slate-800 border border-slate-700 rounded-lg text-xs px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Accent / Panel Theme</label>
+          <input type="color" id="custColor" value="#3b82f6" class="w-full h-9 bg-slate-800 border border-slate-700 rounded-lg cursor-pointer">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick="closeCustomModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg">Cancel</button>
+          <button type="submit" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg">Add to Palette</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+  <!-- JavaScript App Logic -->
+  <script>
+    // Constants
+    const U_HEIGHT_PX = 44; // Standard visual height representation for 1U
+
+    // Preset Catalog Equipment Palette
+    const STANDARD_PALETTE = [
+      { id: 'sw-24', name: '24-Port Switch', u: 1, type: 'switch', power: 35, weight: 3, icon: 'network', color: '#0284c7' },
+      { id: 'sw-16', name: '16-Port Switch', u: 1, type: 'switch', power: 35, weight: 3, icon: 'network', color: '#0284c7' },
+      { id: 'sw-8', name: '8-Port Switch', u: 1, type: 'switch', power: 35, weight: 3, icon: 'network', color: '#0284c7' },
+      { id: 'patch-24', name: '24-Port Patch Panel', u: 1, type: 'patch', power: 0, weight: 1.5, icon: 'grid', color: '#64748b' },
+      { id: 'brush-1u', name: '1U Cable Brush Panel', u: 1, type: 'brush', power: 0, weight: 0.8, icon: 'minus', color: '#334155' },
+      { id: 'router-1u', name: 'Gateway / Firewall', u: 1, type: 'router', power: 25, weight: 2.5, icon: 'shield', color: '#0d9488' },
+      { id: 'shelf-1u', name: '1U Shelf', u: 1, type: 'shelf', power: 0, weight: 2.0, icon: 'archive', color: '#475569' },
+      { id: 'server-1u', name: '1U Server', u: 1, type: 'server', power: 250, weight: 8, icon: 'cpu', color: '#3b82f6' },
+      { id: 'server-2u', name: '2U Server', u: 2, type: 'server', power: 450, weight: 16, icon: 'hard-drive', color: '#6366f1' },
+      { id: 'server-4u', name: '4U Server', u: 4, type: 'server', power: 750, weight: 28, icon: 'server', color: '#8b5cf6' },
+      { id: 'pdu-1u', name: '1U Horizontal PDU', u: 1, type: 'pdu', power: 5, weight: 2, icon: 'zap', color: '#eab308' },
+      { id: 'blank-1u', name: '1U Blanking Panel', u: 1, type: 'blank', power: 0, weight: 0.4, icon: 'square', color: '#1e293b' }
+    ];
+
+    // Application State
+    let appState = {
+      rackHeight: 12,
+      numberingTopDown: false, // false = 1 at bottom, true = 1 at top
+      installedItems: [], // array of { id, catalogId, name, u, startU, color, type, power, weight }
+      customPaletteItems: []
+    };
+
+    let draggedItemMeta = null; // Store item currently being dragged
+
+    // Initializer
+    window.onload = () => {
+      lucide.createIcons();
+      loadLayoutFromStorage();
+      renderPalette();
+      renderRack();
+      updateStats();
+    };
+
+    // Notification Helper
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bg = type === 'error' ? 'bg-rose-900/90 border-rose-700 text-rose-100' : 'bg-slate-900/90 border-slate-700 text-slate-100';
+      toast.className = `px-3 py-2 rounded-lg border text-xs font-medium shadow-xl flex items-center gap-2 backdrop-blur-md transition-all duration-300 transform translate-y-2 opacity-0 ${bg}`;
+      toast.innerHTML = `<i data-lucide="${type === 'error' ? 'alert-circle' : 'info'}" class="w-4 h-4"></i> <span>${msg}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    // Render Side Equipment Palette
+    function renderPalette() {
+      const list = document.getElementById('paletteList');
+      list.innerHTML = '';
+
+      const items = [...STANDARD_PALETTE, ...appState.customPaletteItems];
+
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'p-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-lg flex items-center justify-between cursor-grab active:cursor-grabbing transition group hover:shadow-md';
+        card.draggable = true;
+
+        card.addEventListener('dragstart', (e) => {
+          draggedItemMeta = { ...item, source: 'palette' };
+          e.dataTransfer.setData('text/plain', JSON.stringify(draggedItemMeta));
+          card.classList.add('drag-ghost');
+        });
+
+        card.addEventListener('dragend', () => {
+          card.classList.remove('drag-ghost');
+        });
+
+        // Quick auto-add click handler
+        card.onclick = () => autoPlaceItem(item);
+
+        card.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded flex items-center justify-center text-slate-200" style="background-color: ${item.color}20; border: 1px solid ${item.color}40">
+              <i data-lucide="${item.icon || 'box'}" class="w-4 h-4" style="color: ${item.color}"></i>
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-slate-200 group-hover:text-indigo-400 transition">${item.name}</div>
+              <div class="text-[10px] text-slate-500">${item.u}U Height • ${item.power}W</div>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">${item.u}U</span>
+        `;
+        list.appendChild(card);
+      });
+      lucide.createIcons();
+    }
+
+    // Toggle Numbering Order
+    function toggleNumberingOrder() {
+      appState.numberingTopDown = !appState.numberingTopDown;
+      document.getElementById('orderLabel').textContent = appState.numberingTopDown ? 'Top (1)' : 'Top (High)';
+      renderRack();
+    }
+
+    // Change Rack Height Capacity
+    function changeRackHeight(newHeight) {
+      // Check if installed items fit in new height
+      const exceeds = appState.installedItems.some(i => (i.startU + i.u - 1) > newHeight);
+      if (exceeds) {
+        showToast(`Cannot shrink rack height: Some installed equipment extends past U${newHeight}.`, 'error');
+        document.getElementById('rackHeightSelect').value = appState.rackHeight;
+        return;
+      }
+      appState.rackHeight = newHeight;
+      renderRack();
+      updateStats();
+    }
+
+    // Render 19" Rack Container and Occupied Slots
+    function renderRack() {
+      const container = document.getElementById('rackSlotContainer');
+      const leftRail = document.getElementById('leftRailNumbers');
+      const rightRail = document.getElementById('rightRailNumbers');
+
+      container.innerHTML = '';
+      leftRail.innerHTML = '';
+      rightRail.innerHTML = '';
+
+      const totalU = appState.rackHeight;
+      container.style.height = `${totalU * U_HEIGHT_PX}px`;
+
+      // Render U Slot Rows (Top to Bottom visually)
+      for (let i = totalU; i >= 1; i--) {
+        const uNumber = appState.numberingTopDown ? (totalU - i + 1) : i;
+        const actualSlotU = i; // Physical position index (1 = bottom, totalU = top)
+
+        // Slot drop zone indicator
+        const slotRow = document.createElement('div');
+        slotRow.className = 'absolute w-full border-b border-slate-800/60 flex items-center justify-between px-2 text-[10px] font-mono text-slate-700 pointer-events-auto transition-colors';
+        slotRow.style.height = `${U_HEIGHT_PX}px`;
+        slotRow.style.bottom = `${(actualSlotU - 1) * U_HEIGHT_PX}px`;
+        slotRow.dataset.slotU = actualSlotU;
+
+        // Drag & Drop Listeners on Slot Targets
+        slotRow.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          highlightDropTarget(actualSlotU, true);
+        });
+
+        slotRow.addEventListener('dragleave', () => {
+          highlightDropTarget(actualSlotU, false);
+        });
+
+        slotRow.addEventListener('drop', (e) => {
+          e.preventDefault();
+          highlightDropTarget(actualSlotU, false);
+          handleDropOnSlot(actualSlotU);
+        });
+
+        container.appendChild(slotRow);
+
+        // Rail Numbers
+        const numLabelLeft = document.createElement('div');
+        numLabelLeft.className = 'text-[10px] font-mono text-slate-500 font-bold flex items-center justify-center h-full';
+        numLabelLeft.style.height = `${U_HEIGHT_PX}px`;
+        numLabelLeft.textContent = uNumber;
+        leftRail.appendChild(numLabelLeft);
+
+        const numLabelRight = numLabelLeft.cloneNode(true);
+        rightRail.appendChild(numLabelRight);
+      }
+
+      // Render Installed Items
+      appState.installedItems.forEach(item => {
+        const itemEl = createRackItemElement(item);
+        container.appendChild(itemEl);
+      });
+
+      document.getElementById('totalUCount').textContent = totalU;
+      lucide.createIcons();
+    }
+
+    // Generate Visual DOM Element for installed Rack Equipment
+    function createRackItemElement(item) {
+      const el = document.createElement('div');
+      el.className = 'absolute left-0 right-0 rounded border border-slate-700 brushed-metal shadow-lg flex items-center justify-between px-3 cursor-grab active:cursor-grabbing transition-all group overflow-hidden';
+      el.style.height = `${item.u * U_HEIGHT_PX - 2}px`;
+      el.style.bottom = `${(item.startU - 1) * U_HEIGHT_PX + 1}px`;
+      el.draggable = true;
+
+      // Border indicator matching accent theme
+      el.style.borderLeft = `4px solid ${item.color || '#3b82f6'}`;
+
+      // Drag event to re-order existing item
+      el.addEventListener('dragstart', (e) => {
+        draggedItemMeta = { ...item, source: 'rack' };
+        e.dataTransfer.setData('text/plain', JSON.stringify(draggedItemMeta));
+        el.classList.add('opacity-40');
+      });
+
+      el.addEventListener('dragend', () => {
+        el.classList.remove('opacity-40');
+      });
+
+      // Front Panel Aesthetics depending on type
+      let panelVisuals = getPanelAesthetics(item);
+
+      el.innerHTML = `
+        <!-- Mounting Screws -->
+        <div class="absolute left-1 top-1 flex flex-col gap-1 z-10 opacity-60">
+          <div class="w-1.5 h-1.5 rounded-full bg-slate-500 border border-slate-700"></div>
+          ${item.u > 1 ? '<div class="w-1.5 h-1.5 rounded-full bg-slate-500 border border-slate-700"></div>' : ''}
+        </div>
+        <div class="absolute right-1 top-1 flex flex-col gap-1 z-10 opacity-60">
+          <div class="w-1.5 h-1.5 rounded-full bg-slate-500 border border-slate-700"></div>
+          ${item.u > 1 ? '<div class="w-1.5 h-1.5 rounded-full bg-slate-500 border border-slate-700"></div>' : ''}
+        </div>
+
+        <div class="flex items-center gap-3 pl-2 z-10">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs font-bold text-slate-100 tracking-wide">${item.name}</span>
+          </div>
+          <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">U${item.startU}${item.u > 1 ? `-U${item.startU + item.u - 1}` : ''}</span>
+        </div>
+
+        <!-- Custom Visual Front Faceplate Details -->
+        <div class="flex-1 px-4 flex items-center justify-center opacity-80 pointer-events-none">
+          ${panelVisuals}
+        </div>
+
+        <!-- Quick Actions Overlay -->
+        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/90 p-1 rounded border border-slate-700 z-20">
+          <button onclick="editItemLabel('${item.id}')" class="p-1 hover:bg-slate-800 text-slate-300 rounded" title="Edit Label">
+            <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="removeItem('${item.id}')" class="p-1 hover:bg-rose-900/50 text-rose-400 rounded" title="Remove Item">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `;
+
+      return el;
+    }
+
+    // Render Type-specific Visual Accents (Ports, Drives, Vent Grills)
+    function getPanelAesthetics(item) {
+      if (item.type === 'switch' || item.type === 'patch') {
+        return `
+          <div class="flex gap-1 bg-slate-950/80 p-1 rounded border border-slate-800 overflow-hidden">
+            <div class="grid grid-cols-12 gap-1">
+              ${Array(12).fill(0).map(() => `<div class="w-2 h-2 bg-slate-800 border border-slate-700 rounded-xs"></div>`).join('')}
+            </div>
+          </div>
+        `;
+      } else if (item.type === 'server') {
+        return `
+          <div class="flex items-center gap-2">
+            <div class="flex gap-0.5">
+              ${Array(item.u * 3).fill(0).map(() => `<div class="w-3 h-6 bg-slate-800 border border-slate-700 rounded-sm"></div>`).join('')}
+            </div>
+            <div class="w-8 h-4 bg-slate-950 rounded border border-slate-800 flex items-center justify-center">
+              <div class="w-2 h-1 bg-indigo-500 rounded-xs"></div>
+            </div>
+          </div>
+        `;
+      } else if (item.type === 'pdu') {
+        return `
+          <div class="flex items-center gap-2">
+            ${Array(6).fill(0).map(() => `<div class="w-3 h-3 rounded-full border border-slate-700 bg-slate-900"></div>`).join('')}
+          </div>
+        `;
+      } else if (item.type === 'blank') {
+        return `<div class="w-full h-1 bg-slate-800/50 rounded"></div>`;
+      }
+      return `<div class="w-2/3 h-1 bg-slate-800/40 rounded-full"></div>`;
+    }
+
+    // Drag Over Highlight Handler
+    function highlightDropTarget(targetStartU, isOver) {
+      if (!draggedItemMeta) return;
+
+      const requiredU = draggedItemMeta.u;
+      const slotContainer = document.getElementById('rackSlotContainer');
+
+      for (let u = targetStartU; u < targetStartU + requiredU; u++) {
+        if (u > appState.rackHeight) continue;
+        const slotEl = slotContainer.querySelector(`[data-slot-u="${u}"]`);
+        if (slotEl) {
+          if (isOver) {
+            const isValid = canFitItem(targetStartU, requiredU, draggedItemMeta.id);
+            slotEl.classList.add(isValid ? 'bg-emerald-500/20' : 'bg-rose-500/20');
+          } else {
+            slotEl.classList.remove('bg-emerald-500/20', 'bg-rose-500/20');
+          }
+        }
+      }
+    }
+
+    // Collision Detection & Validation
+    function canFitItem(startU, uHeight, excludeId = null) {
+      if (startU + uHeight - 1 > appState.rackHeight) return false;
+
+      for (const item of appState.installedItems) {
+        if (excludeId && item.id === excludeId) continue;
+        const itemStart = item.startU;
+        const itemEnd = item.startU + item.u - 1;
+        const targetEnd = startU + uHeight - 1;
+
+        if (startU <= itemEnd && targetEnd >= itemStart) {
+          return false; // Collision detected
+        }
+      }
+      return true;
+    }
+
+    // Handle Drop onto Slot
+    function handleDropOnSlot(targetStartU) {
+      if (!draggedItemMeta) return;
+
+      if (!canFitItem(targetStartU, draggedItemMeta.u, draggedItemMeta.source === 'rack' ? draggedItemMeta.id : null)) {
+        showToast('Insufficient contiguous space for item drop.', 'error');
+        draggedItemMeta = null;
+        return;
+      }
+
+      if (draggedItemMeta.source === 'palette') {
+        const newItem = {
+          ...draggedItemMeta,
+          id: 'inst-' + Date.now(),
+          startU: targetStartU
+        };
+        delete newItem.source;
+        appState.installedItems.push(newItem);
+        showToast(`Added ${newItem.name} at U${targetStartU}`);
+      } else if (draggedItemMeta.source === 'rack') {
+        const existing = appState.installedItems.find(i => i.id === draggedItemMeta.id);
+        if (existing) {
+          existing.startU = targetStartU;
+          showToast(`Moved ${existing.name} to U${targetStartU}`);
+        }
+      }
+
+      draggedItemMeta = null;
+      renderRack();
+      updateStats();
+    }
+
+    // Auto-place Item into First Available Slot
+    function autoPlaceItem(paletteItem) {
+      let placed = false;
+      for (let u = 1; u <= appState.rackHeight - paletteItem.u + 1; u++) {
+        if (canFitItem(u, paletteItem.u)) {
+          const newItem = {
+            ...paletteItem,
+            id: 'inst-' + Date.now(),
+            startU: u
+          };
+          appState.installedItems.push(newItem);
+          showToast(`Placed ${newItem.name} at U${u}`);
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        showToast(`No suitable space available for ${paletteItem.u}U item.`, 'error');
+      } else {
+        renderRack();
+        updateStats();
+      }
+    }
+
+    // Edit Equipment Label
+    function editItemLabel(id) {
+      const item = appState.installedItems.find(i => i.id === id);
+      if (!item) return;
+
+      const newLabel = prompt('Edit Equipment Name/Label:', item.name);
+      if (newLabel && newLabel.trim() !== '') {
+        item.name = newLabel.trim();
+        renderRack();
+      }
+    }
+
+    // Remove Equipment
+    function removeItem(id) {
+      appState.installedItems = appState.installedItems.filter(i => i.id !== id);
+      renderRack();
+      updateStats();
+      showToast('Item removed from rack.');
+    }
+
+    // Clear Whole Rack
+    function confirmClearRack() {
+      if (appState.installedItems.length === 0) return;
+      if (confirm('Are you sure you want to clear all equipment from the rack?')) {
+        appState.installedItems = [];
+        renderRack();
+        updateStats();
+        showToast('Rack cleared.');
+      }
+    }
+
+    // Recalculate Capacity / Utilization Stats
+    function updateStats() {
+      const occupiedU = appState.installedItems.reduce((acc, i) => acc + i.u, 0);
+      const totalPower = appState.installedItems.reduce((acc, i) => acc + (i.power || 0), 0);
+      const totalWeight = appState.installedItems.reduce((acc, i) => acc + (i.weight || 0), 0);
+
+      document.getElementById('occupiedUCount').textContent = occupiedU;
+      document.getElementById('estPower').textContent = `${totalPower} W`;
+      document.getElementById('estWeight').textContent = `${totalWeight.toFixed(1)} kg`;
+
+      const pct = Math.min(100, Math.round((occupiedU / appState.rackHeight) * 100));
+      const bar = document.getElementById('utilizationBar');
+      bar.style.width = `${pct}%`;
+      
+      // Color bar based on capacity
+      if (pct > 90) bar.className = 'bg-rose-500 h-full rounded-full transition-all duration-300';
+      else if (pct > 75) bar.className = 'bg-amber-500 h-full rounded-full transition-all duration-300';
+      else bar.className = 'bg-indigo-500 h-full rounded-full transition-all duration-300';
+    }
+
+    // Custom Equipment Modal Controls
+    function openCustomModal() {
+      document.getElementById('customModal').classList.remove('hidden');
+    }
+
+    function closeCustomModal() {
+      document.getElementById('customModal').classList.add('hidden');
+    }
+
+    function handleCustomSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('custName').value.trim();
+      const u = parseInt(document.getElementById('custHeight').value);
+      const type = document.getElementById('custCategory').value;
+      const power = parseInt(document.getElementById('custPower').value) || 0;
+      const weight = parseFloat(document.getElementById('custWeight').value) || 0;
+      const color = document.getElementById('custColor').value;
+
+      const customItem = {
+        id: 'custom-' + Date.now(),
+        name,
+        u,
+        type,
+        power,
+        weight,
+        color,
+        icon: type === 'server' ? 'server' : type === 'switch' ? 'network' : 'box'
+      };
+
+      appState.customPaletteItems.push(customItem);
+      renderPalette();
+      closeCustomModal();
+      showToast(`Custom item "${name}" created.`);
+      document.getElementById('customForm').reset();
+    }
+
+    // Local Storage Persistence
+    function saveLayoutToStorage() {
+      localStorage.setItem('rack_planner_state', JSON.stringify(appState));
+      showToast('Layout saved to browser storage!');
+    }
+
+    function loadLayoutFromStorage() {
+      const saved = localStorage.getItem('rack_planner_state');
+      if (saved) {
+        try {
+          appState = JSON.parse(saved);
+          document.getElementById('rackHeightSelect').value = appState.rackHeight;
+        } catch (e) {
+          console.error('Failed to parse saved rack state', e);
+        }
+      }
+    }
+
+    // Export Layout as JSON
+    function exportJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `rack-layout-${appState.rackHeight}U.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Exported layout JSON.');
+    }
+
+    // Import Layout from JSON
+    function importJSON(event) {
+      const fileReader = new FileReader();
+      fileReader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported && imported.rackHeight && Array.isArray(imported.installedItems)) {
+            appState = imported;
+            document.getElementById('rackHeightSelect').value = appState.rackHeight;
+            renderPalette();
+            renderRack();
+            updateStats();
+            showToast('Layout imported successfully.');
+          } else {
+            showToast('Invalid JSON structure.', 'error');
+          }
+        } catch (err) {
+          showToast('Failed to parse JSON file.', 'error');
+        }
+      };
+      if (event.target.files[0]) {
+        fileReader.readAsText(event.target.files[0]);
+      }
+    }
+  </script>
+</body>
+</html>
