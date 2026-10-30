@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - "main"
+    paths:
+      - '.github/workflows/**'
+      - 'index.html'
+      - 'Dockerfile'
 
 env:
   KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_DOCKER_TOMASNORRE_DK_PASSWORD }}
