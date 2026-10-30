@@ -20,6 +20,8 @@ Will try to tag versions, so I can keep track of changes.
 
 It's as simple as opening the index.html file in a web browser.
 
+You can also test it out here [https://rackbuilder.tomasnorre.dk](https://rackbuilder.tomasnorre.dk)
+
 ## Screenshot
 
 ![Screenshot](images/screenshot.png)
