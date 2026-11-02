@@ -8,6 +8,7 @@ on:
       - '.github/workflows/**'
       - 'index.html'
       - 'Dockerfile'
+      - 'config/**'
 
 env:
   KAMAL_REGISTRY_PASSWORD: ${{ secrets.KAMAL_DOCKER_TOMASNORRE_DK_PASSWORD }}
