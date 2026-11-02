@@ -6,7 +6,7 @@ image: tomasnorre/rackbuilder
 # Deploy to these servers.
 servers:
   web:
-    - 116.203.152.185
+    - 46.224.90.120
 
 # Enable SSL auto certification via Let's Encrypt and allow for multiple apps on a single web server.
 proxy:
